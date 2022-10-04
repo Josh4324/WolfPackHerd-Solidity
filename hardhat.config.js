@@ -3,6 +3,7 @@ require("@nomiclabs/hardhat-etherscan");
 require("hardhat-gas-reporter");
 require("solidity-coverage");
 require("@nomicfoundation/hardhat-toolbox");
+require("hardhat-contract-sizer");
 
 const {
   ETHERSCAN_API_KEY,

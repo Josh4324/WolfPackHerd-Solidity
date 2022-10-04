@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.10;
+pragma solidity ^0.8.7;
 import "./Busd.sol";
 
 contract Vault {
@@ -92,14 +92,14 @@ contract Vault {
         uint256 currentIndex = 0;
 
         for (uint256 i = 0; i < totalItemCount; i++) {
-            if (transactions[i].executed == false) {
+            if (transactions[i].executed) {
                 itemCount += 1;
             }
         }
 
         Transaction[] memory items = new Transaction[](itemCount);
         for (uint256 i = 0; i < totalItemCount; i++) {
-            if (transactions[i].executed == false) {
+            if (transactions[i].executed) {
                 uint256 currentId = i;
                 Transaction storage currentItem = transactions[currentId];
                 items[currentIndex] = currentItem;

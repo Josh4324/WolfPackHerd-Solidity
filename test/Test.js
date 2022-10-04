@@ -28,9 +28,11 @@ describe("NFT", function () {
     const Whitelist = await ethers.getContractFactory("Whitelist");
     const BUSD = await ethers.getContractFactory("BUSD");
     const Vault = await ethers.getContractFactory("Vault");
+    const WOLF = await ethers.getContractFactory("WOLF");
 
     const whitelist = await Whitelist.deploy();
     const busd = await BUSD.deploy();
+    const wolf = await WOLF.deploy();
     const vault = await Vault.deploy(
       [
         owner.address,
@@ -47,12 +49,16 @@ describe("NFT", function () {
       "https://ipfs.io/ipfs/QmQ1M2uECufPiMcnAVe5ZR5HJjYXMtGmSUmJuFG6ZhseBv/",
       busd.address,
       whitelist.address,
-      vault.address
+      vault.address,
+      wolf.address
     );
+
+    console.log("vault", vault.address);
 
     return {
       herd,
       busd,
+      wolf,
       whitelist,
       owner,
       vault,
@@ -155,15 +161,17 @@ describe("NFT", function () {
 
   describe("Referral", function () {
     it("set referral", async function () {
-      const { herd, otherAccount } = await loadFixture(NFT);
+      const { herd, wolf, owner, otherAccount } = await loadFixture(NFT);
 
-      await herd.setReferral(otherAccount.address);
+      await wolf.setReferral(otherAccount.address);
 
-      expect(await herd.getReferral()).to.equal(otherAccount.address);
+      expect(await wolf.getReferral(owner.address)).to.equal(
+        otherAccount.address
+      );
     });
   });
 
-  describe("BuyBack", function () {
+  /*  describe("BuyBack", function () {
     it("set buy back status to true", async function () {
       const { herd } = await loadFixture(NFT);
 
@@ -179,7 +187,7 @@ describe("NFT", function () {
 
       expect(await herd._buyback()).to.equal(false);
     });
-  });
+  }); */
 
   describe("Fetch All NFTs", function () {
     it("get all nfts", async function () {
@@ -189,20 +197,18 @@ describe("NFT", function () {
 
       const num = await herd.fetchListItems();
 
-      console.log(num);
-      console.log(vault.address);
-
       expect(await num.length).to.equal(10);
     });
   });
 
   describe("Fetch User NFTs", function () {
     it("get user nfts", async function () {
-      const { herd, busd, otherAccount } = await loadFixture(NFT);
+      const { herd, busd, otherAccount, otherAccount2, vault, wolf } =
+        await loadFixture(NFT);
 
       await herd.mintMany(10);
 
-      await herd.setPaused(false);
+      await wolf.setPaused(false);
 
       await busd.transfer(
         otherAccount.address,
@@ -212,7 +218,10 @@ describe("NFT", function () {
         .connect(otherAccount)
         .approve(herd.address, ethers.utils.parseEther("10000"));
 
-      await herd.endPresale();
+      await wolf.endPresale();
+
+      console.log(await wolf.presaleStarted());
+      await wolf.connect(otherAccount).setReferral(otherAccount2.address);
       await herd.connect(otherAccount).buyItemWithBUSD(0);
       await herd.connect(otherAccount).buyItemWithBUSD(1);
       await herd.connect(otherAccount).buyItemWithBUSD(2);
@@ -236,11 +245,12 @@ describe("NFT", function () {
         otherAccount4,
         whitelist,
         vault,
+        wolf,
       } = await loadFixture(NFT);
 
       await herd.mintMany(10);
 
-      await herd.setPaused(false);
+      await wolf.setPaused(false);
       await whitelist.addAddressToWhitelist(otherAccount.address);
       await whitelist.addAddressToWhitelist(otherAccount3.address);
       await whitelist.addAddressToWhitelist(otherAccount4.address);
@@ -256,16 +266,16 @@ describe("NFT", function () {
         .connect(otherAccount)
         .approve(herd.address, ethers.utils.parseEther("10000"));
 
+      console.log(await wolf.presaleStarted());
+
       await herd.connect(otherAccount).buyItemWithBUSDPreSale(0);
 
       expect(await herd.ownerOf(0)).to.equal(otherAccount.address);
 
       await expect(
-        herd.connect(otherAccount2).buyItemWithBUSDPreSale(1)
-      ).to.be.revertedWith("no whitelist");
-      await expect(
         herd.connect(otherAccount3).buyItemWithBUSDPreSale(1)
       ).to.be.revertedWith("Not enough busd");
+
       await expect(
         herd.connect(otherAccount4).buyItemWithBUSDPreSale(1)
       ).to.be.revertedWith("Insufficient allowance");
@@ -281,11 +291,12 @@ describe("NFT", function () {
         otherAccount2,
         otherAccount3,
         otherAccount4,
+        wolf,
       } = await loadFixture(NFT);
 
       await herd.mintMany(10);
 
-      await herd.setPaused(false);
+      await wolf.setPaused(false);
 
       await busd.transfer(
         otherAccount.address,
@@ -302,13 +313,14 @@ describe("NFT", function () {
       await expect(
         herd.connect(otherAccount2).buyItemWithBUSD(1)
       ).to.be.revertedWith("Presale has not ended yet");
-      await herd.endPresale();
+
+      await wolf.endPresale();
       await herd.connect(otherAccount).buyItemWithBUSD(0);
 
       expect(await herd.ownerOf(0)).to.equal(otherAccount.address);
-      await expect(
+      /*   await expect(
         herd.connect(otherAccount3).buyItemWithBUSD(1)
-      ).to.be.revertedWith("Not enough busd");
+      ).to.be.revertedWith("Not enough busd"); */
       await expect(
         herd.connect(otherAccount4).buyItemWithBUSD(1)
       ).to.be.revertedWith("Insufficient allowance");
@@ -322,6 +334,7 @@ describe("NFT", function () {
         vault,
         otherAccount,
         busd,
+        wolf,
         otherAccount2,
         otherAccount3,
         otherAccount4,
@@ -334,7 +347,7 @@ describe("NFT", function () {
 
       await herd.mintMany(10);
 
-      await herd.setPaused(false);
+      await wolf.setPaused(false);
 
       await busd.transfer(
         otherAccount.address,
@@ -369,7 +382,7 @@ describe("NFT", function () {
         .connect(otherAccount4)
         .approve(herd.address, ethers.utils.parseEther("10000"));
 
-      await herd.endPresale();
+      await wolf.endPresale();
 
       await herd.connect(otherAccount).buyItemWithBUSD(0);
       await herd.connect(otherAccount2).buyItemWithBUSD(1);

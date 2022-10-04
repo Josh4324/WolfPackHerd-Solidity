@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.10;
+pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
@@ -9,16 +9,12 @@ import "./Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./Busd.sol";
 import "./Vault.sol";
+import "./Wolf.sol";
 
 /// @title WarTrunk NFT
 /// @author Joshua Adesanya
 /// @notice You can use this contract for only the most basic simulation
 contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
-    // Airdrop
-    // Lottery
-    //initial NFT owner
-    // multisig
-
     using Counters for Counters.Counter;
     Counters.Counter private tokenIds;
     /**
@@ -29,6 +25,8 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
 
     BUSD public tokenBUSD;
     Vault public vault;
+    WOLF public wolf;
+    address public vaultAddress;
 
     // Whitelist contract instance
     Whitelist public whitelist;
@@ -37,13 +35,16 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
     uint256 public _price = 125 ether;
 
     // referral fee
-    uint256 internal constant referralFee = 1;
+    uint256 internal constant referralFee = 2;
+
+    // royalty fee
+    uint256 royaltyFee = 6;
 
     // boolean to keep track of _buyback status
     bool public _buyback = false;
 
     // number of NFTs currently available
-    uint256 public _available = 10;
+    uint256 public constant _available = 1000;
 
     // _paused is used to pause the contract in case of an emergency
     bool public _paused = true;
@@ -77,12 +78,19 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
         string memory baseURI,
         address busd_addr,
         address _whitelist_addr,
-        address _vault
+        address _vault,
+        address _wolf
     ) ERC721("AlienTrunk", "AT") {
+        require(busd_addr != address(0), "zero address");
+        require(_whitelist_addr != address(0), "zero address");
+        require(_vault != address(0), "zero address");
+        require(_wolf != address(0), "zero address");
         _baseTokenURI = baseURI;
         tokenBUSD = BUSD(busd_addr);
         whitelist = Whitelist(_whitelist_addr);
         vault = Vault(_vault);
+        vaultAddress = _vault;
+        wolf = WOLF(_wolf);
     }
 
     /**
@@ -122,14 +130,6 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
      */
     function endPresale() public onlyOwner {
         presaleStarted = false;
-    }
-
-    /**
-     * @dev _baseURI overides the Openzeppelin's ERC721 implementation which by default
-     * returned an empty string for the baseURI
-     */
-    function _baseURI() internal view virtual override returns (string memory) {
-        return _baseTokenURI;
     }
 
     function tokenURI(uint256 tokenId)
@@ -174,8 +174,8 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
     /**
      * @dev setReferral set the msg.sender referral addresss
      */
-    function setReferral(address val) public {
-        Referral[msg.sender] = val;
+    function setRoyalTax(uint256 val) public {
+        royaltyFee = val;
     }
 
     /**
@@ -261,16 +261,51 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
                 ListItems[tokenId].price,
             "Insufficient allowance"
         );
-        require(
-            tokenBUSD.transferFrom(
-                msg.sender,
-                ListItems[tokenId].owner,
-                ListItems[tokenId].price
-            ),
-            "An error occured, make sure you approve the contract"
-        );
+
+        uint256 royalTax = (ListItems[tokenId].price * royaltyFee) / 100;
+        uint256 amount = ListItems[tokenId].price - royalTax;
+
+        uint256 Per = (ListItems[tokenId].price * referralFee) / 100;
+        uint256 actualPrice = ListItems[tokenId].price - (Per + royalTax);
+
         _transfer(ListItems[tokenId].owner, msg.sender, tokenId);
         ListItems[tokenId].sold = true;
+        if (address(wolf.getReferral(msg.sender)) != address(0)) {
+            require(
+                tokenBUSD.transferFrom(
+                    msg.sender,
+                    address(ListItems[tokenId].owner),
+                    actualPrice
+                ),
+                "An error occured, make sure you approve the contract"
+            );
+            require(
+                tokenBUSD.transferFrom(
+                    msg.sender,
+                    wolf.getReferral(msg.sender),
+                    Per
+                ),
+                "An error occured, make sure you approve the contract"
+            );
+            require(
+                tokenBUSD.transferFrom(msg.sender, vaultAddress, royalTax),
+                "An error occured, make sure you approve the contract"
+            );
+        } else {
+            require(
+                tokenBUSD.transferFrom(
+                    msg.sender,
+                    address(ListItems[tokenId].owner),
+                    amount
+                ),
+                "An error occured, make sure you approve the contract"
+            );
+
+            require(
+                tokenBUSD.transferFrom(msg.sender, vaultAddress, royalTax),
+                "An error occured, make sure you approve the contract"
+            );
+        }
         ListItems[tokenId].owner = msg.sender;
     }
 
@@ -283,7 +318,7 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
         onlyWhenNotPaused
     {
         require(ListItems[tokenId].sold == false, "Not for sale");
-        require(presaleStarted == true, "Presale has not ended yet");
+        require(presaleStarted, "Presale has not ended yet");
         require(whitelist.whitelist(msg.sender), "no whitelist");
         require(
             tokenBUSD.balanceOf(msg.sender) >= ListItems[tokenId].price,
@@ -295,9 +330,16 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
             "Insufficient allowance"
         );
 
-        uint256 Per = (ListItems[tokenId].price / 100) * (referralFee);
-        uint256 actualPrice = ListItems[tokenId].price - Per;
-        if (Referral[msg.sender] != address(0)) {
+        uint256 royalTax = (ListItems[tokenId].price * royaltyFee) / 100;
+        uint256 amount = ListItems[tokenId].price - royalTax;
+
+        uint256 Per = (ListItems[tokenId].price * referralFee) / 100;
+        uint256 actualPrice = ListItems[tokenId].price - (Per + royalTax);
+
+        _transfer(ListItems[tokenId].owner, msg.sender, tokenId);
+        ListItems[tokenId].sold = true;
+
+        if (wolf.getReferral(msg.sender) != address(0)) {
             require(
                 tokenBUSD.transferFrom(
                     msg.sender,
@@ -307,7 +349,15 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
                 "An error occured, make sure you approve the contract"
             );
             require(
-                tokenBUSD.transferFrom(msg.sender, Referral[msg.sender], Per),
+                tokenBUSD.transferFrom(
+                    msg.sender,
+                    wolf.getReferral(msg.sender),
+                    Per
+                ),
+                "An error occured, make sure you approve the contract"
+            );
+            require(
+                tokenBUSD.transferFrom(msg.sender, vaultAddress, royalTax),
                 "An error occured, make sure you approve the contract"
             );
         } else {
@@ -315,21 +365,24 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
                 tokenBUSD.transferFrom(
                     msg.sender,
                     ListItems[tokenId].owner,
-                    ListItems[tokenId].price
+                    amount
                 ),
                 "An error occured, make sure you approve the contract"
             );
+
+            require(
+                tokenBUSD.transferFrom(msg.sender, vaultAddress, royalTax),
+                "An error occured, make sure you approve the contract"
+            );
         }
-        _transfer(ListItems[tokenId].owner, msg.sender, tokenId);
-        ListItems[tokenId].sold = true;
         ListItems[tokenId].owner = msg.sender;
     }
 
     /**
      * @dev get back busd with tokenID;
      */
-    function buyBack(uint256 tokenId) public {
-        require(_buyback == true, "Buyback is not active");
+    function buyBack(uint256 tokenId) public nonReentrant {
+        require(_buyback, "Buyback is not active");
         require(
             ownerOf(tokenId) == msg.sender,
             "You do not have access to this NFT"
@@ -338,12 +391,12 @@ contract WarTrunk is ERC721URIStorage, Ownable, ReentrancyGuard {
             tokenBUSD.balanceOf(address(this)) >= ListItems[tokenId].price,
             "Not enough busd"
         ); //checks that enough eth
+        _transfer(msg.sender, _owner, tokenId);
+        ListItems[tokenId].sold = false;
+        ListItems[tokenId].owner = _owner;
         require(
             tokenBUSD.transfer(msg.sender, _price),
             "An error occured, make sure you approve the contract"
         );
-        _transfer(msg.sender, _owner, tokenId);
-        ListItems[tokenId].sold = false;
-        ListItems[tokenId].owner = _owner;
     }
 }

@@ -3,10 +3,10 @@ const { ethers } = require("hardhat");
 
 async function main() {
   // We get the contract to deploy
-  const NFT = await ethers.getContractFactory("AlienTrunk");
+  const NFT = await ethers.getContractFactory("ArmoredTrunk");
 
   const nft = await NFT.deploy(
-    "https://ipfs.io/ipfs/QmfNp18JBrXC81z8v5RY9pTS8Y9JLwT4LkehLgigiJyEa1/",
+    "https://ipfs.io/ipfs/QmZk9m5xWGgwYWb8EnBFkT5qZAZaTDcgb7KZwV4Jr2QFLu/",
     "0x08FCc3138ded4aAf591F9466CCE4AB4b6cE3751a",
     "0x9752B50995C28a7452EDcafA518B06b4d123bD69",
     "0x33f99448316Cc616Ae1480663bb48aEa4878217a"
@@ -25,12 +25,12 @@ async function main() {
   await hre.run("verify:verify", {
     address: nft.address,
     constructorArguments: [
-      "https://ipfs.io/ipfs/QmfNp18JBrXC81z8v5RY9pTS8Y9JLwT4LkehLgigiJyEa1/",
+      "https://ipfs.io/ipfs/QmZk9m5xWGgwYWb8EnBFkT5qZAZaTDcgb7KZwV4Jr2QFLu/",
       "0x08FCc3138ded4aAf591F9466CCE4AB4b6cE3751a",
       "0x9752B50995C28a7452EDcafA518B06b4d123bD69",
       "0x33f99448316Cc616Ae1480663bb48aEa4878217a",
     ],
-    contract: "contracts/Alien.sol:AlienTrunk",
+    contract: "contracts/Armored.sol:ArmoredTrunk",
   });
 
   function sleep(ms) {
